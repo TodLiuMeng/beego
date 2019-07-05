@@ -55,6 +55,9 @@ type Listen struct {
 	EnableHTTP        bool
 	HTTPAddr          string
 	HTTPPort          int
+	AutoTLS           bool
+	Domains           []string
+	TLSCacheDir       string
 	EnableHTTPS       bool
 	EnableMutualHTTPS bool
 	HTTPSAddr         string
@@ -106,6 +109,7 @@ type SessionConfig struct {
 // LogConfig holds Log related config
 type LogConfig struct {
 	AccessLogs       bool
+	EnableStaticLogs bool   //log static files requests default: false
 	AccessLogsFormat string //access log format: JSON_FORMAT, APACHE_FORMAT or empty string
 	FileLineNum      bool
 	Outputs          map[string]string // Store Adaptor : config
@@ -182,6 +186,11 @@ func recoverPanic(ctx *context.Context) {
 		if BConfig.RunMode == DEV && BConfig.EnableErrorsRender {
 			showErr(err, ctx, stack)
 		}
+		if ctx.Output.Status != 0 {
+			ctx.ResponseWriter.WriteHeader(ctx.Output.Status)
+		} else {
+			ctx.ResponseWriter.WriteHeader(500)
+		}
 	}
 }
 
@@ -203,6 +212,9 @@ func newBConfig() *Config {
 			ServerTimeOut: 0,
 			ListenTCP4:    false,
 			EnableHTTP:    true,
+			AutoTLS:       false,
+			Domains:       []string{},
+			TLSCacheDir:   ".",
 			HTTPAddr:      "",
 			HTTPPort:      8080,
 			EnableHTTPS:   false,
@@ -247,6 +259,7 @@ func newBConfig() *Config {
 		},
 		Log: LogConfig{
 			AccessLogs:       false,
+			EnableStaticLogs: false,
 			AccessLogsFormat: "APACHE_FORMAT",
 			FileLineNum:      true,
 			Outputs:          map[string]string{"console": ""},

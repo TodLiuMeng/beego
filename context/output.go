@@ -30,6 +30,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	yaml "gopkg.in/yaml.v2"
 )
 
 // BeegoOutput does work for sending response header.
@@ -202,6 +204,19 @@ func (output *BeegoOutput) JSON(data interface{}, hasIndent bool, encoding bool)
 	return output.Body(content)
 }
 
+// YAML writes yaml to response body.
+func (output *BeegoOutput) YAML(data interface{}) error {
+	output.Header("Content-Type", "application/x-yaml; charset=utf-8")
+	var content []byte
+	var err error
+	content, err = yaml.Marshal(data)
+	if err != nil {
+		http.Error(output.Context.ResponseWriter, err.Error(), http.StatusInternalServerError)
+		return err
+	}
+	return output.Body(content)
+}
+
 // JSONP writes jsonp to response body.
 func (output *BeegoOutput) JSONP(data interface{}, hasIndent bool) error {
 	output.Header("Content-Type", "application/javascript; charset=utf-8")
@@ -245,6 +260,19 @@ func (output *BeegoOutput) XML(data interface{}, hasIndent bool) error {
 	return output.Body(content)
 }
 
+// ServeFormatted serve YAML, XML OR JSON, depending on the value of the Accept header
+func (output *BeegoOutput) ServeFormatted(data interface{}, hasIndent bool, hasEncode ...bool) {
+	accept := output.Context.Input.Header("Accept")
+	switch accept {
+	case ApplicationYAML:
+		output.YAML(data)
+	case ApplicationXML, TextXML:
+		output.XML(data, hasIndent)
+	default:
+		output.JSON(data, hasIndent, len(hasEncode) > 0 && hasEncode[0])
+	}
+}
+
 // Download forces response for download file.
 // it prepares the download response header automatically.
 func (output *BeegoOutput) Download(file string, filename ...string) {
@@ -260,7 +288,20 @@ func (output *BeegoOutput) Download(file string, filename ...string) {
 	} else {
 		fName = filepath.Base(file)
 	}
-	output.Header("Content-Disposition", "attachment; filename="+url.QueryEscape(fName))
+	//https://tools.ietf.org/html/rfc6266#section-4.3
+	fn := url.PathEscape(fName)
+	if fName == fn {
+		fn = "filename=" + fn
+	} else {
+		/**
+		  The parameters "filename" and "filename*" differ only in that
+		  "filename*" uses the encoding defined in [RFC5987], allowing the use
+		  of characters not present in the ISO-8859-1 character set
+		  ([ISO-8859-1]).
+		*/
+		fn = "filename=" + fName + "; filename*=utf-8''" + fn
+	}
+	output.Header("Content-Disposition", "attachment; "+fn)
 	output.Header("Content-Description", "File Transfer")
 	output.Header("Content-Type", "application/octet-stream")
 	output.Header("Content-Transfer-Encoding", "binary")
@@ -350,6 +391,11 @@ func stringsToJSON(str string) string {
 			jsons.WriteRune(r)
 		} else {
 			jsons.WriteString("\\u")
+			if rint < 0x100 {
+				jsons.WriteString("00")
+			} else if rint < 0x1000 {
+				jsons.WriteString("0")
+			}
 			jsons.WriteString(strconv.FormatInt(int64(rint), 16))
 		}
 	}

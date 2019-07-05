@@ -97,7 +97,7 @@ func parseYML(buf []byte) (cnf map[string]interface{}, err error) {
 		}
 	}
 
-	data, err := goyaml2.Read(bytes.NewBuffer(buf))
+	data, err := goyaml2.Read(bytes.NewReader(buf))
 	if err != nil {
 		log.Println("Goyaml2 ERR>", string(buf), err)
 		return
@@ -119,7 +119,7 @@ func parseYML(buf []byte) (cnf map[string]interface{}, err error) {
 // ConfigContainer A Config represents the yaml configuration.
 type ConfigContainer struct {
 	data map[string]interface{}
-	sync.Mutex
+	sync.RWMutex
 }
 
 // Bool returns the boolean value for a given key.
@@ -285,14 +285,20 @@ func (c *ConfigContainer) getData(key string) (interface{}, error) {
 	if len(key) == 0 {
 		return nil, errors.New("key is empty")
 	}
+	c.RLock()
+	defer c.RUnlock()
+
 	keys := strings.Split(key, ".")
 	tmpData := c.data
-	for _, k := range keys {
+	for idx, k := range keys {
 		if v, ok := tmpData[k]; ok {
 			switch v.(type) {
 			case map[string]interface{}:
 				{
 					tmpData = v.(map[string]interface{})
+					if idx == len(keys) - 1 {
+						return tmpData, nil
+					}
 				}
 			default:
 				{
